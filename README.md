@@ -1,6 +1,6 @@
 # 🌍 Gezio - Türkiye Keşif Rehberi (v1 MVP)
 
-Gezio, kullanıcıların Türkiye'deki şehirleri, gezilecek yerleri ve restoranları keşfetmelerini sağlayan web tabanlı bir seyahat rehberi uygulamasıdır.
+Gezio, kullanıcıların Türkiye'deki şehirleri, gezilecek yerleri ve restoranları keşfetmelerini sağlayan web tabanlı bir seyahat rehberi uygulamasıdır.Bu proje için artırımlı model tercih edilmiştir.Kullanıcılardan gelen feedbackler doğrultusunda websitesi güncellenecektir.
 
 ## 🚀 Proje Durumu: v1 (Tamamlandı)
 
