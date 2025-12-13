@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gezio - Türkiye Keşif Rehberi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #0d9488;
+      --secondary-color: #fbbf24;
+      --background-color: #f3f4f6;
+      --card-bg: #ffffff;
+    }
+    body { font-family: 'Inter', sans-serif; background-color: var(--background-color); }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: var(--background-color); }
+    .rating-star { color: var(--secondary-color); }
+    .place-card { transition: all 0.3s ease; }
+    .place-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 15px 25px -5px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    }
+    #detail-map { height: 300px; width: 100%; }
+    .city-card {
+      background-color: #fff;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    .city-card:hover {
+      transform: scale(1.03);
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      border: 2px solid var(--primary-color);
+    }
+    .city-card.disabled { opacity: 0.5; cursor: not-allowed; }
+    .city-card.disabled:hover {
+      transform: none;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      border: 1px solid #e5e7eb;
+    }
+    .nav-tab { padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; transition: border-bottom 0.2s ease; }
+    .nav-tab.active { border-bottom: 3px solid var(--primary-color); color: var(--primary-color); }
+  </style>
+
+  <!-- Shared app state (IMPORTANT: module + normal scripts both use this) -->
+  <script>
+    window.appState = {
+      currentCityId: "mugla",
+      currentSection: "places",
+      isAuthReady: false
+    };
+  </script>
+</head>
+
+<body class="min-h-screen">
+  <!-- Header -->
+  <header class="bg-white shadow-lg sticky top-0 z-10 hidden" id="main-header">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-6">
+        <h1 class="text-3xl font-extrabold text-teal-600 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Gezio
+        </h1>
+
+        <button onclick="showCitySelectionModal()" class="flex items-center p-2 border border-gray-300 rounded-lg text-base font-semibold bg-gray-50 hover:bg-gray-100 transition duration-150">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1 text-teal-600" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zm-5 8a5 5 0 015-5c1.455 0 2.802.483 3.903 1.298l-7.794 7.794A5 5 0 015 10zm10 0a5 5 0 00-5-5c-1.455 0-2.802.483-3.903 1.298l7.794 7.794A5 5 0 0015 10z" clip-rule="evenodd" />
+          </svg>
+          <span id="current-city-display"> (Muğla) </span> Değiştir
+        </button>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <span id="user-info" class="hidden text-sm font-medium text-gray-600"></span>
+        <button onclick="handleAuthClick()" id="auth-button" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-full shadow-md transition duration-300">
+          Giriş Yap / Üye Ol
+        </button>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex border-t border-gray-100">
+      <div id="tab-places" class="nav-tab active" onclick="changeSection('places')">Gezilecek Yerler</div>
+      <div id="tab-restaurants" class="nav-tab" onclick="changeSection('restaurants')">Restoranlar</div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 hidden" id="main-content">
+    <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+      <h2 id="search-bar-title" class="text-xl font-semibold text-gray-800 mb-4">Muğla'da Nereyi Keşfetmek İstersiniz?</h2>
+      <div class="flex flex-col sm:flex-row gap-4">
+        <input type="text" id="search-input" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500 transition duration-150" onkeyup="filterContent()" />
+        <select id="category-filter" class="p-3 border border-gray-300 rounded-lg w-full sm:w-48 focus:ring-teal-500 focus:border-teal-500 transition duration-150" onchange="filterContent()"></select>
+      </div>
+      <button onclick="generateTripPlan()" id="plan-button" class="mt-4 w-full sm:w-auto px-6 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow-md transition duration-300 disabled:opacity-50" disabled>
+        ✨ Bir Günlük Seyahat Planı Oluştur
+      </button>
+    </div>
+
+    <section id="place-list-section" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></section>
+  </main>
+
+  <!-- City Selection Modal -->
+  <div id="city-selection-modal" class="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-8">
+      <h2 class="text-3xl font-extrabold text-teal-600 mb-6 text-center">Türkiye'de Keşfe Nereden Başlayalım?</h2>
+      <p class="text-gray-600 text-center mb-8">Lütfen bir şehir seçin. Şu an sadece <b>Muğla</b> ve <b>İstanbul</b> aktif.</p>
+      <div id="city-selection-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all">
+      <div class="p-6">
+        <div class="flex justify-between items-start mb-4">
+          <h2 id="detail-title" class="text-3xl font-bold text-gray-900"></h2>
+          <button onclick="closeModal()" class="text-gray-400 hover:text-gray-700 transition duration-150">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <img id="detail-image" class="w-full h-64 object-cover rounded-lg mb-4" alt="Yer Resmi" />
+
+        <div id="detail-rating-container" class="flex items-center space-x-2 mb-4"></div>
+
+        <div class="flex items-center space-x-4 mb-4">
+          <button onclick="summarizePlaceDescription()" id="summary-button" class="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white font-semibold rounded-lg shadow transition duration-300 disabled:opacity-50">✨ Açıklamayı Özetle</button>
+          <button onclick="readDescriptionAloud()" id="tts-button" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg shadow transition duration-300 disabled:opacity-50">🔊 Dinle</button>
+        </div>
+
+        <div id="summary-loading-indicator" class="text-sm text-blue-500 italic mb-4 hidden">Özet oluşturuluyor...</div>
+        <div id="tts-loading-indicator" class="text-sm text-blue-500 italic mb-4 hidden">Ses dosyası hazırlanıyor...</div>
+
+        <h3 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">Detaylı Açıklama</h3>
+        <p id="detail-description" class="text-gray-700 mb-6 whitespace-pre-wrap"></p>
+
+        <h3 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">Konum Bilgisi</h3>
+        <div id="detail-map" class="bg-gray-200 rounded-lg flex items-center justify-center text-gray-500 italic mb-6">
+          Harita Alanı (Aşama 2'de harita entegrasyonu eklenecek)
+        </div>
+
+        <h3 class="text-xl font-semibold text-teal-600 mb-3 border-b pb-2">Kullanıcı Yorumları (<span id="review-count">0</span>)</h3>
+        <div id="reviews-container" class="space-y-4">
+          <p id="no-reviews" class="text-gray-500">Henüz yorum yok. İlk yorumu siz yapın!</p>
+        </div>
+
+        <div id="review-form-container" class="mt-6 p-4 bg-gray-50 rounded-lg hidden">
+          <h4 class="font-semibold mb-2">Yorumunuzu Ekleyin</h4>
+          <textarea id="review-text" rows="3" class="w-full p-2 border rounded-lg mb-2 focus:ring-teal-500 focus:border-teal-500" placeholder="Deneyiminizi anlatın..."></textarea>
+          <div class="flex items-center mb-2">
+            <span class="mr-2">Puanınız:</span>
+            <div id="rating-input" class="flex space-x-1 cursor-pointer">
+              <svg data-rating="1" class="h-6 w-6 text-gray-300 hover:text-yellow-500 transition duration-150" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+<svg data-rating="2" class="h-6 w-6 text-gray-300 hover:text-yellow-500 transition duration-150" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+<svg data-rating="3" class="h-6 w-6 text-gray-300 hover:text-yellow-500 transition duration-150" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+<svg data-rating="4" class="h-6 w-6 text-gray-300 hover:text-yellow-500 transition duration-150" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+<svg data-rating="5" class="h-6 w-6 text-gray-300 hover:text-yellow-500 transition duration-150" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            </div>
+          </div>
+          <button onclick="submitReview()" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 w-full">Yorumu Gönder</button>
+        </div>
+
+        <div id="auth-warning" class="mt-6 p-4 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg text-sm text-center cursor-pointer hover:bg-yellow-200 transition duration-150" onclick="showAuthModal()">
+          Yorum ekleyebilmek için lütfen giriş yapın veya üye olun. (Tıklayın)
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Trip Plan Modal -->
+  <div id="trip-plan-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all p-6">
+      <div class="flex justify-between items-start mb-4">
+        <h2 class="text-2xl font-bold text-gray-900">✨ Bir Günlük Seyahat Planı</h2>
+        <button onclick="closeTripPlanModal()" class="text-gray-400 hover:text-gray-700 transition duration-150">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div id="trip-plan-content" class="text-gray-700 whitespace-pre-wrap"></div>
+      <div id="trip-plan-loading" class="text-center py-8 hidden">
+        <svg class="animate-spin h-8 w-8 text-teal-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="mt-2 text-teal-600">Seyahat planınız oluşturuluyor...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth Modal -->
+  <div id="auth-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+      <div class="flex justify-between items-start mb-4">
+        <h2 id="auth-title" class="text-2xl font-bold text-teal-600">Giriş Yap</h2>
+        <button onclick="closeAuthModal()" class="text-gray-400 hover:text-gray-700 transition duration-150">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div id="auth-error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4 hidden" role="alert">
+        <span id="auth-error-message" class="block sm:inline"></span>
+      </div>
+
+      <input type="email" id="auth-email" placeholder="E-posta Adresi" class="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:ring-teal-500 focus:border-teal-500" />
+      <input type="password" id="auth-password" placeholder="Şifre" class="w-full p-3 border border-gray-300 rounded-lg mb-6 focus:ring-teal-500 focus:border-teal-500" />
+
+      <button onclick="authenticateUser()" id="auth-action-button" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300 w-full mb-3">
+        Giriş Yap
+      </button>
+
+      <button onclick="toggleAuthMode()" id="auth-toggle-button" class="text-sm text-teal-600 hover:text-teal-800 w-full text-center">
+        Hesabınız yok mu? Yeni hesap oluşturun.
+      </button>
+    </div>
+  </div>
+
+  <footer class="bg-gray-800 text-white mt-12 py-6 hidden" id="main-footer">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm">
+      <p>&copy; 2025 Gezio. Tüm Hakları Saklıdır.</p>
+    </div>
+  </footer>
+
+  <!-- Firebase (optional). Keeps only review persistence. -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, query, where, onSnapshot, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    let app, db, auth;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    let authMode = "login";
+
+    function setAuthUI(user) {
+      const authButton = document.getElementById('auth-button');
+      const userInfoSpan = document.getElementById('user-info');
+      const isAuthenticated = !!(user && user.email);
+
+      if (isAuthenticated) {
+        authButton.textContent = "Çıkış Yap";
+        authButton.onclick = () => window.handleAuthClick(true);
+        userInfoSpan.classList.remove('hidden');
+        userInfoSpan.textContent = `Hoş geldiniz, ${user.email.split('@')[0]}`;
+      } else {
+        authButton.textContent = "Giriş Yap / Üye Ol";
+        authButton.onclick = () => window.handleAuthClick(false);
+        userInfoSpan.classList.add('hidden');
+      }
+
+      const reviewForm = document.getElementById('review-form-container');
+      const authWarning = document.getElementById('auth-warning');
+      if (reviewForm && authWarning) {
+        if (isAuthenticated) {
+          reviewForm.classList.remove('hidden');
+          authWarning.classList.add('hidden');
+        } else {
+          reviewForm.classList.add('hidden');
+          authWarning.classList.remove('hidden');
+        }
+      }
+    }
+
+    // Expose minimal globals for non-module script
+    window.__firebase = {
+      get auth() { return auth; },
+      get db() { return db; },
+      appId,
+      serverTimestamp,
+      addDoc,
+      collection,
+      query,
+      where,
+      onSnapshot,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      signOut,
+      signInAnonymously
+    };
+
+    // UI helpers (auth modal)
+    window.showAuthModal = function() {
+      const m = document.getElementById('auth-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      authMode = "login";
+      updateAuthModalUI();
+      document.getElementById('auth-error').classList.add('hidden');
+    };
+    window.closeAuthModal = function() {
+      const m = document.getElementById('auth-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    };
+    window.toggleAuthMode = function() {
+      authMode = authMode === "login" ? "register" : "login";
+      updateAuthModalUI();
+    };
+    function updateAuthModalUI() {
+      const title = document.getElementById('auth-title');
+      const actionButton = document.getElementById('auth-action-button');
+      const toggleButton = document.getElementById('auth-toggle-button');
+      if (authMode === "login") {
+        title.textContent = "Giriş Yap";
+        actionButton.textContent = "Giriş Yap";
+        toggleButton.innerHTML = "Hesabınız yok mu? Yeni hesap oluşturun.";
+      } else {
+        title.textContent = "Kayıt Ol";
+        actionButton.textContent = "Yeni Hesap Oluştur";
+        toggleButton.innerHTML = "Zaten hesabınız var mı? Giriş yapın.";
+      }
+    }
+    window.authenticateUser = async function() {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value.trim();
+      const errorDiv = document.getElementById('auth-error');
+      const errorMessage = document.getElementById('auth-error-message');
+      errorDiv.classList.add('hidden'); errorMessage.textContent = "";
+
+      if (!email || !password) {
+        errorMessage.textContent = "Lütfen e-posta ve şifrenizi girin.";
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+      try {
+        if (!firebaseConfig) throw new Error("Firebase config yok");
+        if (authMode === "login") {
+          await signInWithEmailAndPassword(auth, email, password);
+          window.alertMessage("Başarıyla giriş yaptınız!", "bg-green-100 border-green-400 text-green-700");
+        } else {
+          await createUserWithEmailAndPassword(auth, email, password);
+          window.alertMessage("Hesabınız oluşturuldu!", "bg-green-100 border-green-400 text-green-700");
+        }
+        window.closeAuthModal();
+      } catch (e) {
+        let msg = "Bir hata oluştu. Lütfen bilgilerinizi kontrol edin.";
+        if (e?.code === "auth/user-not-found") msg = "Bu e-posta adresine kayıtlı kullanıcı bulunamadı.";
+        if (e?.code === "auth/wrong-password") msg = "Hatalı şifre girdiniz.";
+        if (e?.code === "auth/email-already-in-use") msg = "Bu e-posta adresi zaten kullanımda.";
+        if (e?.code === "auth/weak-password") msg = "Şifre en az 6 karakter olmalıdır.";
+        errorMessage.textContent = msg;
+        errorDiv.classList.remove('hidden');
+      }
+    };
+
+    window.handleAuthClick = async function(isLoggedIn) {
+      if (!firebaseConfig) {
+        window.alertMessage("Firebase yapılandırması yok. Giriş sistemi devre dışı.", "bg-yellow-100 border-yellow-400 text-yellow-700");
+        return;
+      }
+      if (isLoggedIn) {
+        try {
+          await signOut(auth);
+          await signInAnonymously(auth);
+          window.alertMessage("Çıkış yapıldı.", "bg-green-100 border-green-400 text-green-700");
+        } catch (e) {
+          window.alertMessage("Çıkış hatası.", "bg-red-100 border-red-400 text-red-700");
+        }
+      } else {
+        window.showAuthModal();
+      }
+    };
+
+    // Firestore review listener + add review
+    window.listenForReviews = function(placeId) {
+      if (!firebaseConfig || !db || !placeId) return false;
+      const reviewsRef = collection(db, 'artifacts', appId, 'public', 'data', 'reviews');
+      const q = query(reviewsRef, where("placeId", "==", placeId));
+      onSnapshot(q, (snap) => {
+        const reviews = [];
+        snap.forEach(d => reviews.push({ id: d.id, ...d.data() }));
+        window.__renderReviewsFromFirebase(placeId, reviews);
+      });
+      return true;
+    };
+
+    if (firebaseConfig) {
+      setLogLevel('Silent');
+      app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      auth = getAuth(app);
+
+      // initial sign-in
+      if (initialAuthToken) {
+        try { await signInWithCustomToken(auth, initialAuthToken); }
+        catch { await signInAnonymously(auth); }
+      } else {
+        await signInAnonymously(auth);
+      }
+
+      onAuthStateChanged(auth, (user) => {
+        window.appState.isAuthReady = true;
+        setAuthUI(user);
+      });
+    } else {
+      window.appState.isAuthReady = true;
+    }
+  </script>
+
+  <!-- Main (non-module) script: UI + data (single source of truth) -->
+  <script>
+    const CITY_NAMES = {'adana': 'Adana', 'adiyaman': 'Adıyaman', 'afyonkarahisar': 'Afyonkarahisar', 'agri': 'Ağrı', 'amasya': 'Amasya', 'ankara': 'Ankara', 'antalya': 'Antalya', 'artvin': 'Artvin', 'aydin': 'Aydın', 'balikesir': 'Balıkesir', 'bilecik': 'Bilecik', 'bingol': 'Bingöl', 'bitlis': 'Bitlis', 'bolu': 'Bolu', 'burdur': 'Burdur', 'bursa': 'Bursa', 'canakkale': 'Çanakkale', 'cankiri': 'Çankırı', 'corum': 'Çorum', 'denizli': 'Denizli', 'diyarbakir': 'Diyarbakır', 'edirne': 'Edirne', 'elazig': 'Elazığ', 'erzincan': 'Erzincan', 'erzurum': 'Erzurum', 'eskisehir': 'Eskişehir', 'gaziantep': 'Gaziantep', 'giresun': 'Giresun', 'gumushane': 'Gümüşhane', 'hakk_ri': 'Hakkâri', 'hatay': 'Hatay', 'isparta': 'Isparta', 'mersin': 'Mersin', 'istanbul': 'İstanbul', 'izmir': 'İzmir', 'kars': 'Kars', 'kastamonu': 'Kastamonu', 'kayseri': 'Kayseri', 'kirklareli': 'Kırklareli', 'kirsehir': 'Kırşehir', 'kocaeli': 'Kocaeli', 'konya': 'Konya', 'kutahya': 'Kütahya', 'malatya': 'Malatya', 'manisa': 'Manisa', 'kahramanmaras': 'Kahramanmaraş', 'mardin': 'Mardin', 'mugla': 'Muğla', 'mus': 'Muş', 'nevsehir': 'Nevşehir', 'nigde': 'Niğde', 'ordu': 'Ordu', 'rize': 'Rize', 'sakarya': 'Sakarya', 'samsun': 'Samsun', 'siirt': 'Siirt', 'sinop': 'Sinop', 'sivas': 'Sivas', 'tekirdag': 'Tekirdağ', 'tokat': 'Tokat', 'trabzon': 'Trabzon', 'tunceli': 'Tunceli', 'sanliurfa': 'Şanlıurfa', 'usak': 'Uşak', 'van': 'Van', 'yozgat': 'Yozgat', 'zonguldak': 'Zonguldak', 'aksaray': 'Aksaray', 'bayburt': 'Bayburt', 'karaman': 'Karaman', 'kirikkale': 'Kırıkkale', 'batman': 'Batman', 'sirnak': 'Şırnak', 'bartin': 'Bartın', 'ardahan': 'Ardahan', 'igdir': 'Iğdır', 'yalova': 'Yalova', 'karabuk': 'Karabük', 'kilis': 'Kilis', 'osmaniye': 'Osmaniye', 'duzce': 'Düzce'};
+    const ACTIVE_CITY_IDS = new Set(['mugla', 'istanbul']);
+    const CITY_UI_DATA = {
+      "mugla": {
+        places: {
+          placeholder: "Örn: Bodrum Kalesi, Akyaka, Ölüdeniz...",
+          categories: ["Plaj", "Antik Kent", "Doğa", "Kanyon", "Tarihi Yapı", "Aktivite"]
+        },
+        restaurants: {
+          placeholder: "Örn: Yöresel, Balık, Kebap...",
+          categories: ["Yöresel", "Deniz Ürünleri", "Kebap", "Kahvaltı"]
+        }
+      },
+      "istanbul": {
+        places: {
+          placeholder: "Örn: Galata, Ayasofya, Balat...",
+          categories: ["Tarihi Yapı", "Müze", "Pazar", "Park", "Mahalle"]
+        },
+        restaurants: {
+          placeholder: "Örn: Meyhane, Sokak lezzeti, Kahvaltı...",
+          categories: ["Meyhane", "Sokak Lezzetleri", "Kahvaltı", "İtalyan"]
+        }
+      }
+    };
+
+    const ALL_PLACES = {
+      "mugla": [{'id': 'bodrum_kalesi', 'adi': 'Bodrum Kalesi (St. Peter Kalesi)', 'kategori': 'Tarihi Yapı', 'puan': 4.7, 'yorum_sayisi': 820, 'kisa_aciklama': 'Bodrum’un simgesi; kale surları, manzara ve müze deneyimi bir arada.', 'detayli_aciklama': '15. yüzyılda inşa edilen Bodrum Kalesi, bugün Sualtı Arkeoloji Müzesi’ne ev sahipliği yapar. Kale içindeki kuleler, avlular ve Bodrum Körfezi manzarası özellikle gün batımında çok etkileyicidir.', 'resim_url': 'https://placehold.co/800x600/0d9488/ffffff?text=Bodrum+Kalesi', 'mock_reviews': [{'userName': 'EgeGezgini', 'rating': 5, 'text': 'Manzara + tarih = mükemmel. Müze kısmı da çok dolu.'}, {'userName': 'Bodrumlu', 'rating': 4, 'text': 'Kalabalık olabiliyor ama kesinlikle görülmeli.'}]}, {'id': 'akyaka_azmak', 'adi': 'Akyaka Azmak Nehri', 'kategori': 'Doğa', 'puan': 4.8, 'yorum_sayisi': 640, 'kisa_aciklama': 'Cam gibi su, tekne turu ve serin bir yürüyüş rotası.', 'detayli_aciklama': 'Azmak Nehri boyunca yürüyüş yapabilir, suyun içindeki balıkları izleyebilir ve kısa tekne turlarıyla doğanın tadını çıkarabilirsiniz. Yazın bile serin olur; akşam saatleri huzurlu geçer.', 'resim_url': 'https://placehold.co/800x600/10b981/ffffff?text=Akyaka+Azmak', 'mock_reviews': [{'userName': 'DoğaSever', 'rating': 5, 'text': 'Suyun rengi inanılmaz! Tekne turu çok keyifliydi.'}, {'userName': 'Serinlik', 'rating': 5, 'text': 'Sıcakta ilaç gibi geliyor.'}]}, {'id': 'saklikent_kanyon', 'adi': 'Saklıkent Kanyonu', 'kategori': 'Kanyon', 'puan': 4.6, 'yorum_sayisi': 950, 'kisa_aciklama': 'Muğla sınırlarında, buz gibi suda yürüyüş ve macera.', 'detayli_aciklama': 'Türkiye’nin en etkileyici kanyonlarından Saklıkent’te tahta yürüyüş yollarından ilerleyebilir veya su içinde kanyon yürüyüşü yapabilirsiniz. Su ayakkabısı önerilir; kanyon içi serin ve güvenlik açısından dikkat gerektirir.', 'resim_url': 'https://placehold.co/800x600/374151/ffffff?text=Saklıkent+Kanyonu', 'mock_reviews': [{'userName': 'Maceraci', 'rating': 5, 'text': 'Buz gibi su ama efsane deneyim.'}, {'userName': 'Ailece', 'rating': 4, 'text': 'Çocuklarla tahta yoldan gittik, çok güzeldi.'}]}, {'id': 'oludeniz_mavi_lagun', 'adi': 'Ölüdeniz (Mavi Lagün)', 'kategori': 'Plaj', 'puan': 4.9, 'yorum_sayisi': 1500, 'kisa_aciklama': 'Turkuaz lagün, sakin deniz ve yamaç paraşütü manzarası.', 'detayli_aciklama': 'Muğla’nın Fethiye ilçesindeki Ölüdeniz, durgun suları ve eşsiz rengiyle ünlüdür. Belcekız Plajı’ndan yürüyerek lagüne geçebilir, Babadağ’dan paraşüt yapanları izleyebilirsiniz.', 'resim_url': 'https://placehold.co/800x600/22c55e/ffffff?text=Ölüdeniz', 'mock_reviews': [{'userName': 'DenizKizi', 'rating': 5, 'text': 'Bu renk başka yerde yok. Tam kartpostal.'}, {'userName': 'Parasut', 'rating': 5, 'text': 'Paraşüt + lagün manzarası müthiş.'}]}, {'id': 'kelebekler_vadisi', 'adi': 'Kelebekler Vadisi', 'kategori': 'Plaj', 'puan': 4.7, 'yorum_sayisi': 780, 'kisa_aciklama': 'Tekneyle ulaşılan vadi; şelale yürüyüşü ve berrak deniz.', 'detayli_aciklama': 'Yüksek kayalıklarla çevrili vadiye çoğunlukla Ölüdeniz’den tekne turlarıyla gidilir. Doğal yaşam alanı olduğu için çevre kurallarına uymak önemlidir; kısa bir patikayla şelaleye yürüyebilirsiniz.', 'resim_url': 'https://placehold.co/800x600/6b7280/ffffff?text=Kelebekler+Vadisi', 'mock_reviews': [{'userName': 'Tekneci', 'rating': 5, 'text': 'Deniz tertemiz. Şelale yürüyüşü de keyifli.'}, {'userName': 'Kampci', 'rating': 4, 'text': 'Vadi harika ama gölgeli alan sınırlı.'}]}, {'id': 'marmaris_kalesi', 'adi': 'Marmaris Kalesi ve Eski Şehir', 'kategori': 'Tarihi Yapı', 'puan': 4.5, 'yorum_sayisi': 520, 'kisa_aciklama': 'Marina manzarası, kale içi müze ve taş sokaklar.', 'detayli_aciklama': 'Marmaris Kalesi çevresi, eski şehir sokakları ve marina hattıyla birleşince akşamüstü için çok keyifli bir rota olur. Kalenin üst kısmından körfez manzarası izlenebilir.', 'resim_url': 'https://placehold.co/800x600/f59e0b/ffffff?text=Marmaris+Kalesi', 'mock_reviews': [{'userName': 'Marina', 'rating': 5, 'text': 'Gün batımında manzara şahane.'}, {'userName': 'Gezgin', 'rating': 4, 'text': 'Eski sokakları çok tatlı.'}]}, {'id': 'datca_knidos', 'adi': 'Knidos Antik Kenti (Datça)', 'kategori': 'Antik Kent', 'puan': 4.6, 'yorum_sayisi': 410, 'kisa_aciklama': 'İki denizin kesiştiği uçta antik kent ve muhteşem manzara.', 'detayli_aciklama': 'Datça Yarımadası’nın ucundaki Knidos, tiyatro, tapınak kalıntıları ve limanıyla etkileyicidir. Rüzgâr sert olabilir; rahat ayakkabı ve su alın.', 'resim_url': 'https://placehold.co/800x600/7c3aed/ffffff?text=Knidos+Antik+Kenti', 'mock_reviews': [{'userName': 'Arkeoloji', 'rating': 5, 'text': 'Manzara + tarih birleşmiş. Çok sevdim.'}, {'userName': 'Yolcu', 'rating': 4, 'text': 'Yolu uzun ama değiyor.'}]}, {'id': 'bodrum_gumusluk', 'adi': 'Gümüşlük (Bodrum)', 'kategori': 'Doğa', 'puan': 4.6, 'yorum_sayisi': 360, 'kisa_aciklama': 'Sahil yürüyüşü, gün batımı ve deniz kenarı akşamlarıyla ünlü.', 'detayli_aciklama': 'Gümüşlük, sakin sahil atmosferi ve gün batımıyla öne çıkar. Akşam saatlerinde yürüyüş ve fotoğraf için idealdir; yazın çok kalabalık olabilir.', 'resim_url': 'https://placehold.co/800x600/ef4444/ffffff?text=Gümüşlük+Sahil', 'mock_reviews': [{'userName': 'GünBatımı', 'rating': 5, 'text': 'Gün batımı efsane!'}, {'userName': 'Sakinlik', 'rating': 4, 'text': 'Sezonda kalabalık, erken gitmek iyi.'}]}, {'id': 'akyaka_kite', 'adi': 'Akyaka Kite / Rüzgar Sporları', 'kategori': 'Aktivite', 'puan': 4.4, 'yorum_sayisi': 240, 'kisa_aciklama': 'Gökova’da rüzgâr sporları ve sahil kafeleri.', 'detayli_aciklama': 'Akyaka sahili, rüzgâr sörfü ve kitesurf için uygun günler sunar. İzlemek bile keyifli; ekipman kiralama ve ders seçenekleri mevcuttur (sezona göre).', 'resim_url': 'https://placehold.co/800x600/3182ce/ffffff?text=Gökova+Rüzgar', 'mock_reviews': [{'userName': 'Kiteci', 'rating': 5, 'text': 'Rüzgar güzeldi, eğitim aldım.'}, {'userName': 'İzleyici', 'rating': 4, 'text': 'Sahilde oturup izlemek çok iyi.'}]}, {'id': 'sedir_adassi', 'adi': 'Sedir Adası (Kleopatra Plajı)', 'kategori': 'Plaj', 'puan': 4.5, 'yorum_sayisi': 510, 'kisa_aciklama': 'İnce kumlu plaj ve tekneyle ulaşım; yazın çok popüler.', 'detayli_aciklama': 'Gökova Körfezi’ndeki Sedir Adası, Kleopatra Plajı ile bilinir. Tekne turlarıyla gidilir; koruma kuralları nedeniyle kumun taşınmaması önemlidir.', 'resim_url': 'https://placehold.co/800x600/16a34a/ffffff?text=Sedir+Adası', 'mock_reviews': [{'userName': 'TekneTuru', 'rating': 5, 'text': 'Kum yapısı çok farklı, deniz çok güzel.'}, {'userName': 'Kalabalik', 'rating': 4, 'text': 'Popüler olduğu için kalabalık ama worth.'}]}],
+      "istanbul": [{'id': 'ayasofya', 'adi': 'Ayasofya-i Kebir Camii', 'kategori': 'Tarihi Yapı', 'puan': 4.9, 'yorum_sayisi': 980, 'kisa_aciklama': 'Bin yılı aşkın süredir ayakta duran görkemli yapı.', 'detayli_aciklama': 'Ayasofya, Bizans ve Osmanlı dönemlerinde farklı amaçlarla kullanılmış; kubbesi, mozaikleri ve tarihiyle benzersiz bir simgedir.', 'resim_url': 'https://placehold.co/800x600/581c87/ffffff?text=Ayasofya', 'mock_reviews': [{'userName': 'Kültür', 'rating': 5, 'text': 'Her köşesi tarih.'}, {'userName': 'Gezgin', 'rating': 5, 'text': 'Mutlaka görülmeli.'}]}, {'id': 'galata', 'adi': 'Galata Kulesi', 'kategori': 'Tarihi Yapı', 'puan': 4.7, 'yorum_sayisi': 720, 'kisa_aciklama': 'Şehrin en iyi panoramik manzarasını sunar.', 'detayli_aciklama': '14. yüzyıldan kalma kule; Haliç ve Boğaz manzarası için popüler.', 'resim_url': 'https://placehold.co/800x600/7c3aed/ffffff?text=Galata+Kulesi', 'mock_reviews': [{'userName': 'Manzara', 'rating': 5, 'text': 'Gün batımı harika.'}, {'userName': 'Sıra', 'rating': 4, 'text': 'Kalabalık ama değer.'}]}, {'id': 'kapalicarsi', 'adi': 'Kapalıçarşı', 'kategori': 'Pazar', 'puan': 4.5, 'yorum_sayisi': 650, 'kisa_aciklama': 'Dünyanın en eski kapalı pazarlarından biri.', 'detayli_aciklama': 'Labirent gibi sokaklar, binlerce dükkan ve tarihi atmosfer.', 'resim_url': 'https://placehold.co/800x600/ef4444/ffffff?text=Kapalıçarşı', 'mock_reviews': [{'userName': 'Tüccar', 'rating': 4, 'text': 'Pazarlık şart.'}, {'userName': 'Turist', 'rating': 5, 'text': 'Çok renkli.'}]}, {'id': 'topkapi', 'adi': 'Topkapı Sarayı', 'kategori': 'Müze', 'puan': 4.6, 'yorum_sayisi': 590, 'kisa_aciklama': 'Osmanlı’nın yönetim merkezi olan saray kompleksi.', 'detayli_aciklama': 'Harem, kutsal emanetler, bahçeler ve saray koleksiyonlarıyla geniş bir alan.', 'resim_url': 'https://placehold.co/800x600/f97316/ffffff?text=Topkapı+Sarayı', 'mock_reviews': [{'userName': 'Tarih', 'rating': 5, 'text': 'Tüm gün ayırın.'}, {'userName': 'Aile', 'rating': 4, 'text': 'Çok büyük.'}]}, {'id': 'sultanahmet', 'adi': 'Sultanahmet Meydanı', 'kategori': 'Tarihi Yapı', 'puan': 4.8, 'yorum_sayisi': 860, 'kisa_aciklama': 'Şehrin tarihi kalbi; yürüyüş ve fotoğraf için ideal.', 'detayli_aciklama': 'Ayasofya, Sultanahmet Camii ve çevresindeki tarihi aks; günün her saati canlıdır.', 'resim_url': 'https://placehold.co/800x600/0ea5e9/ffffff?text=Sultanahmet', 'mock_reviews': [{'userName': 'Gez', 'rating': 5, 'text': 'Her yer tarih.'}]}, {'id': 'dolmabahce', 'adi': 'Dolmabahçe Sarayı', 'kategori': 'Müze', 'puan': 4.7, 'yorum_sayisi': 740, 'kisa_aciklama': 'Boğaz kıyısında ihtişamlı saray.', 'detayli_aciklama': '19. yüzyıl Osmanlı mimarisi; iç dekorasyon ve Boğaz manzarası dikkat çeker.', 'resim_url': 'https://placehold.co/800x600/14b8a6/ffffff?text=Dolmabahçe', 'mock_reviews': [{'userName': 'Saray', 'rating': 5, 'text': 'Çok etkileyici.'}]}, {'id': 'balat', 'adi': 'Balat & Fener', 'kategori': 'Mahalle', 'puan': 4.6, 'yorum_sayisi': 500, 'kisa_aciklama': 'Renkli sokaklar, kafeler ve fotoğraf rotası.', 'detayli_aciklama': 'Tarihi dokusu, merdivenli sokakları ve farklı kültürel izleriyle yürüyüş için ideal.', 'resim_url': 'https://placehold.co/800x600/64748b/ffffff?text=Balat', 'mock_reviews': [{'userName': 'Foto', 'rating': 5, 'text': 'Renkler harika.'}]}, {'id': 'emirgan', 'adi': 'Emirgan Korusu', 'kategori': 'Park', 'puan': 4.7, 'yorum_sayisi': 430, 'kisa_aciklama': 'Boğaz manzaralı geniş koru; özellikle baharda çok güzel.', 'detayli_aciklama': 'Yürüyüş yolları, gölet ve kafelerle şehir içinde nefes aldıran bir alan.', 'resim_url': 'https://placehold.co/800x600/22c55e/ffffff?text=Emirgan+Korusu', 'mock_reviews': [{'userName': 'Bahçe', 'rating': 5, 'text': 'Laleler zamanı şahane.'}]}]
+    };
+
+    const ALL_RESTAURANTS = {
+      "mugla": [{'id': 'mugla_lokanta', 'adi': 'Muğla Yöresel Lokantası', 'kategori': 'Yöresel', 'puan': 4.4, 'yorum_sayisi': 180, 'kisa_aciklama': 'Muğla ev yemekleri ve zeytinyağlılar.', 'detayli_aciklama': 'Günlük çıkan ev yemekleriyle uygun fiyatlı ve doyurucu bir seçenek. Keşkek ve yöresel otlar denenebilir.', 'resim_url': 'https://placehold.co/800x600/b7791f/ffffff?text=Yöresel+Lokanta'}, {'id': 'bodrum_balikci', 'adi': 'Bodrum Balıkçıları', 'kategori': 'Deniz Ürünleri', 'puan': 4.6, 'yorum_sayisi': 420, 'kisa_aciklama': 'Marina hattında taze deniz ürünleri.', 'detayli_aciklama': 'Günlük taze balık, meze ve deniz manzarası. Sezonda rezervasyon iyi olur.', 'resim_url': 'https://placehold.co/800x600/1d4ed8/ffffff?text=Bodrum+Balıkçı'}],
+      "istanbul": [{'id': 'miyhane', 'adi': 'Boğaz Meyhanesi', 'kategori': 'Meyhane', 'puan': 4.6, 'yorum_sayisi': 540, 'kisa_aciklama': 'Meze kültürü ve canlı atmosfer.', 'detayli_aciklama': 'Klasik meze çeşitleri ve müzikli akşamlar. Rezervasyon önerilir.', 'resim_url': 'https://placehold.co/800x600/0f766e/ffffff?text=Meyhane'}, {'id': 'sokak', 'adi': 'Tarihi Sokak Lezzetleri', 'kategori': 'Sokak Lezzetleri', 'puan': 4.5, 'yorum_sayisi': 900, 'kisa_aciklama': 'Döner, midye, kokoreç ve daha fazlası.', 'detayli_aciklama': 'Hızlı ve uygun. Hijyen ve yoğunluk saate göre değişebilir.', 'resim_url': 'https://placehold.co/800x600/ef4444/ffffff?text=Sokak+Lezzetleri'}]
+    };
+
+    // --- Stars ---
+    window.generateStarRating = function(rating) {
+      const fullStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 rating-star" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>';
+      const emptyStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.031a1 1 0 00-.363 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.031a1 1 0 00-1.175 0l-2.817 2.031c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>';
+      let stars = '';
+      const full = Math.floor(rating);
+      const rem = rating % 1;
+      for (let i=0;i<full;i++) stars += fullStar;
+      if (rem > 0.3 && full < 5) stars += fullStar;
+      const filled = (stars.match(/<svg/g) || []).length;
+      for (let i=filled;i<5;i++) stars += emptyStar;
+      return stars;
+    };
+
+    // --- City cards ---
+    function renderCitySelectionGrid() {
+      const container = document.getElementById('city-selection-grid');
+      container.innerHTML = '';
+      Object.keys(CITY_NAMES).forEach((cityId) => {
+        const cityName = CITY_NAMES[cityId];
+        const isActive = ACTIVE_CITY_IDS.has(cityId);
+        const card = document.createElement('div');
+        card.className = `city-card rounded-xl border border-gray-200 p-6 text-center shadow-lg ${isActive ? 'cursor-pointer hover:border-teal-600' : 'disabled'}`;
+        if (isActive) card.onclick = () => selectCity(cityId);
+        card.innerHTML = `
+          <div class="h-16 w-16 mx-auto mb-3 bg-teal-100 rounded-full flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h4 class="text-xl font-bold text-gray-800 mb-1">${cityName}</h4>
+          <p class="text-sm text-gray-500">${isActive ? 'Aktif' : 'Yakında Eklenecek'}</p>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // --- Filters/UI ---
+    function updateSearchAndFilters(cityId) {
+      const section = window.appState.currentSection;
+      const cityUi = CITY_UI_DATA[cityId] || {};
+      const ui = (section === 'places' ? cityUi.places : cityUi.restaurants) || {
+        placeholder: section === 'places' ? "Yer ara..." : "Restoran ara...",
+        categories: []
+      };
+      const categoryFilter = document.getElementById('category-filter');
+      const searchInput = document.getElementById('search-input');
+
+      searchInput.placeholder = ui.placeholder || "Ara...";
+      categoryFilter.innerHTML = '<option value="Tümü">Tüm Kategoriler</option>';
+      (ui.categories || []).forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        categoryFilter.appendChild(option);
+      });
+
+      // Plan button: only for places + data exists
+      const planBtn = document.getElementById('plan-button');
+      const dataSet = section === 'places' ? ALL_PLACES : ALL_RESTAURANTS;
+      planBtn.disabled = section !== 'places' || (dataSet[cityId] || []).length === 0;
+
+      searchInput.value = '';
+      filterContent();
+    }
+
+    window.selectCity = function(cityId) {
+      window.appState.currentCityId = cityId;
+
+      document.getElementById('main-header').classList.remove('hidden');
+      document.getElementById('main-content').classList.remove('hidden');
+      document.getElementById('main-footer').classList.remove('hidden');
+      document.getElementById('city-selection-modal').classList.add('hidden');
+
+      const cityName = CITY_NAMES[cityId] || 'Bilinmiyor';
+      document.getElementById('current-city-display').textContent = cityName;
+
+      changeSection(window.appState.currentSection);
+      closeModal();
+    };
+
+    window.showCitySelectionModal = function() {
+      document.getElementById('city-selection-modal').classList.remove('hidden');
+      document.getElementById('main-header').classList.add('hidden');
+      document.getElementById('main-content').classList.add('hidden');
+      document.getElementById('main-footer').classList.add('hidden');
+    };
+
+    window.changeSection = function(newSection) {
+      window.appState.currentSection = newSection;
+
+      document.getElementById('tab-places').classList.toggle('active', newSection === 'places');
+      document.getElementById('tab-restaurants').classList.toggle('active', newSection === 'restaurants');
+
+      const cityId = window.appState.currentCityId;
+      const cityName = CITY_NAMES[cityId] || 'Bilinmiyor';
+      document.getElementById('search-bar-title').textContent =
+        newSection === 'places'
+          ? `${cityName}'da Nereyi Keşfetmek İstersiniz?`
+          : `${cityName}'da Hangi Restoranları Denemek İstersiniz?`;
+
+      updateSearchAndFilters(cityId);
+    };
+
+    function renderList(items) {
+      const container = document.getElementById('place-list-section');
+      container.innerHTML = '';
+      if (items.length === 0) {
+        const cityName = CITY_NAMES[window.appState.currentCityId] || 'Bu Şehir';
+        const msg = window.appState.currentSection === 'places'
+          ? 'Arama kriterlerinize uygun gezilecek yer bulunamadı.'
+          : 'Arama kriterlerinize uygun restoran bulunamadı.';
+        container.innerHTML = `<p class="text-center text-gray-500 col-span-full py-8 text-lg"><b>${cityName}</b>: ${msg}</p>`;
+        return;
+      }
+
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'place-card bg-white rounded-xl shadow-lg overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300';
+        card.onclick = () => showDetail(item.id);
+        card.innerHTML = `
+          <img src="${item.resim_url}" alt="${item.adi}" class="w-full h-48 object-cover">
+          <div class="p-5">
+            <span class="inline-block bg-teal-100 text-teal-800 text-xs font-medium px-3 py-1 rounded-full mb-3">${item.kategori}</span>
+            <h3 class="text-xl font-bold text-gray-900 mb-2">${item.adi}</h3>
+            <p class="text-gray-600 text-sm mb-4 line-clamp-2">${item.kisa_aciklama}</p>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-1">
+                ${generateStarRating(item.puan)}
+                <span class="text-sm font-semibold text-gray-800 ml-2">${Number(item.puan).toFixed(1)}</span>
+                <span class="text-xs text-gray-500">(${item.yorum_sayisi} yorum)</span>
+              </div>
+              <span class="text-sm font-medium text-teal-600 hover:text-teal-800">Detayları Gör →</span>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    window.filterContent = function() {
+      const search = (document.getElementById('search-input').value || '').toLowerCase();
+      const cat = document.getElementById('category-filter').value;
+      const cityId = window.appState.currentCityId;
+      const dataSet = window.appState.currentSection === 'places' ? ALL_PLACES : ALL_RESTAURANTS;
+      const items = dataSet[cityId] || [];
+      const filtered = items.filter(item => {
+        const matchesSearch = item.adi.toLowerCase().includes(search) || item.kisa_aciklama.toLowerCase().includes(search);
+        const matchesCat = (cat === 'Tümü') || item.kategori === cat;
+        return matchesSearch && matchesCat;
+      });
+      renderList(filtered);
+    };
+
+    // --- Detail modal + reviews ---
+    function showDetail(id) {
+      const cityId = window.appState.currentCityId;
+      const dataSet = window.appState.currentSection === 'places' ? ALL_PLACES : ALL_RESTAURANTS;
+      const items = dataSet[cityId] || [];
+      const item = items.find(x => x.id === id);
+      if (!item) return;
+
+      const modal = document.getElementById('detail-modal');
+      modal.dataset.placeId = id;
+
+      document.getElementById('detail-title').textContent = item.adi;
+      document.getElementById('detail-image').src = item.resim_url;
+      document.getElementById('detail-image').alt = item.adi;
+      document.getElementById('detail-description').textContent = item.detayli_aciklama;
+
+      document.getElementById('detail-rating-container').innerHTML = `
+        <span class="text-2xl font-bold text-gray-900">${Number(item.puan).toFixed(1)}</span>
+        <div class="flex items-center space-x-0.5">${generateStarRating(item.puan)}</div>
+        <span class="text-sm text-gray-500">(${item.yorum_sayisi} yorum)</span>
+      `;
+
+      document.getElementById('detail-map').innerHTML = `<p class="italic">Konum: ${item.adi} (Harita entegrasyonu aşama 2'de)</p>`;
+
+      // Reviews: Firebase if available else demo reviews
+      const firebaseOk = (typeof window.listenForReviews === 'function') && window.listenForReviews(id);
+      if (!firebaseOk) renderClientReviews(id);
+
+      // buttons enabled
+      document.getElementById('summary-button').disabled = false;
+      document.getElementById('tts-button').disabled = false;
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    window.closeModal = function() {
+      const modal = document.getElementById('detail-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      if (typeof resetRatingInput === 'function') resetRatingInput();
+    };
+
+    // Firebase callback
+    window.__renderReviewsFromFirebase = function(placeId, reviews) {
+      const container = document.getElementById('reviews-container');
+      const countSpan = document.getElementById('review-count');
+      const noReviews = document.getElementById('no-reviews');
+      container.innerHTML = '';
+      if (!reviews || reviews.length === 0) {
+        renderClientReviews(placeId);
+        return;
+      }
+      noReviews.classList.add('hidden');
+      countSpan.textContent = String(reviews.length);
+      reviews.forEach(r => {
+        const el = document.createElement('div');
+        el.className = 'p-3 bg-white border border-gray-200 rounded-lg shadow-sm';
+        el.innerHTML = `
+          <div class="flex justify-between items-center mb-1">
+            <div class="font-semibold text-gray-800">${r.userName || 'Kullanıcı'}</div>
+            <div class="flex items-center">${generateStarRating(r.rating || 0)}</div>
+          </div>
+          <p class="text-sm text-gray-600">${r.text || ''}</p>
+        `;
+        container.appendChild(el);
+      });
+    };
+
+    function renderClientReviews(placeId) {
+      const container = document.getElementById('reviews-container');
+      const countSpan = document.getElementById('review-count');
+      const noReviews = document.getElementById('no-reviews');
+      container.innerHTML = '';
+
+      const cityId = window.appState.currentCityId;
+      const dataSet = window.appState.currentSection === 'places' ? ALL_PLACES : ALL_RESTAURANTS;
+      const item = (dataSet[cityId] || []).find(x => x.id === placeId);
+      const mock = (item && item.mock_reviews) ? item.mock_reviews : [];
+
+      if (mock.length === 0) {
+        noReviews.classList.remove('hidden');
+        countSpan.textContent = "0";
+        return;
+      }
+      noReviews.classList.add('hidden');
+      countSpan.textContent = `${mock.length} (Demo)`;
+      mock.forEach(r => {
+        const el = document.createElement('div');
+        el.className = 'p-3 bg-blue-50 border border-blue-200 rounded-lg shadow-sm';
+        el.innerHTML = `
+          <div class="flex justify-between items-center mb-1">
+            <div class="font-semibold text-blue-700">${r.userName} (DEMO)</div>
+            <div class="flex items-center">${generateStarRating(r.rating)}</div>
+          </div>
+          <p class="text-sm text-gray-600">${r.text}</p>
+        `;
+        container.appendChild(el);
+      });
+    }
+
+    // Rating input
+    const ratingInput = document.getElementById('rating-input');
+    let selectedRating = 0;
+    function updateRatingInput(rating, isHover=false) {
+      const stars = ratingInput.querySelectorAll('svg');
+      stars.forEach(star => {
+        const sr = parseInt(star.dataset.rating, 10);
+        if (sr <= rating) {
+          star.classList.remove('text-gray-300');
+          star.classList.add('rating-star', 'text-yellow-500');
+        } else {
+          star.classList.remove('rating-star', 'text-yellow-500');
+          star.classList.add('text-gray-300');
+        }
+      });
+      if (!isHover) selectedRating = rating;
+    }
+    function resetRatingInput() {
+      selectedRating = 0;
+      updateRatingInput(0);
+    }
+    ratingInput.querySelectorAll('svg').forEach(star => {
+      star.addEventListener('click', () => updateRatingInput(parseInt(star.dataset.rating, 10)));
+      star.addEventListener('mouseover', () => updateRatingInput(parseInt(star.dataset.rating, 10), true));
+      star.addEventListener('mouseout', () => updateRatingInput(selectedRating));
+    });
+
+    // Submit review (Firebase if available)
+    window.submitReview = async function() {
+      const modal = document.getElementById('detail-modal');
+      const placeId = modal.dataset.placeId;
+      const text = (document.getElementById('review-text').value || '').trim();
+      const rating = selectedRating;
+
+      if (!placeId || !text || !rating) {
+        alertMessage("Lütfen hem yorum metnini girin hem de puan seçin.", "bg-yellow-100 border-yellow-400 text-yellow-700");
+        return;
+      }
+
+      // If Firebase available
+      if (window.__firebase && window.__firebase.auth && window.__firebase.auth.currentUser && window.__firebase.auth.currentUser.email) {
+        const user = window.__firebase.auth.currentUser;
+        const newReview = {
+          placeId,
+          cityId: window.appState.currentCityId,
+          userId: user.uid,
+          userName: user.email.split('@')[0],
+          rating,
+          text,
+          createdAt: window.__firebase.serverTimestamp()
+        };
+        try {
+          const reviewsRef = window.__firebase.collection(window.__firebase.db, 'artifacts', window.__firebase.appId, 'public', 'data', 'reviews');
+          await window.__firebase.addDoc(reviewsRef, newReview);
+          document.getElementById('review-text').value = '';
+          resetRatingInput();
+          alertMessage("Yorum eklendi!", "bg-green-100 border-green-400 text-green-700");
+        } catch (e) {
+          alertMessage("Yorum eklenirken hata oluştu.", "bg-red-100 border-red-400 text-red-700");
+        }
+      } else {
+        alertMessage("Yorum eklemek için giriş yapın (Firebase).", "bg-yellow-100 border-yellow-400 text-yellow-700");
+        if (typeof showAuthModal === 'function') showAuthModal();
+      }
+    };
+
+    // Alerts
+    window.alertMessage = function(message, classes) {
+      let alertBox = document.getElementById('custom-alert');
+      if (!alertBox) {
+        alertBox = document.createElement('div');
+        alertBox.id = 'custom-alert';
+        alertBox.className = 'fixed top-4 right-4 p-3 rounded-lg shadow-xl text-sm transition-opacity duration-300 z-[60] opacity-0';
+        document.body.appendChild(alertBox);
+      }
+      alertBox.className = `fixed top-4 right-4 p-3 rounded-lg shadow-xl text-sm transition-opacity duration-300 z-[60] opacity-100 ${classes || ''}`;
+      alertBox.textContent = message;
+      setTimeout(() => {
+        alertBox.classList.remove('opacity-100');
+        alertBox.classList.add('opacity-0');
+      }, 2500);
+    };
+
+    // Placeholder features
+    window.generateTripPlan = function() {
+      alertMessage("Plan oluşturma (AI) özelliği henüz eklenmedi.", "bg-yellow-100 border-yellow-400 text-yellow-700");
+    };
+    window.summarizePlaceDescription = function() {
+      alertMessage("Özetleme özelliği henüz eklenmedi.", "bg-yellow-100 border-yellow-400 text-yellow-700");
+    };
+    window.readDescriptionAloud = function() {
+      alertMessage("Sesli anlatım özelliği henüz eklenmedi.", "bg-yellow-100 border-yellow-400 text-yellow-700");
+    };
+    window.closeTripPlanModal = function() {
+      const m = document.getElementById('trip-plan-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    };
+
+    // ESC close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        closeTripPlanModal();
+        if (typeof closeAuthModal === 'function') closeAuthModal();
+      }
+    });
+
+    // Init
+    window.onload = function() {
+      renderCitySelectionGrid();
+      // auto-select default city if active
+      if (ACTIVE_CITY_IDS.has(window.appState.currentCityId)) {
+        selectCity(window.appState.currentCityId);
+      }
+    };
+  </script>
+</body>
+</html>
