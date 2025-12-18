@@ -7,7 +7,7 @@ Gezio, kullanıcıların Türkiye'deki şehirleri, gezilecek yerleri ve restoran
 Bu sürüm **"Single File" (Tek Dosya HTML)** yapısı ile geliştirilmiş olup, temel gösterim ve listeleme fonksiyonlarına odaklanmıştır.
 
 ### ✅ v1 Özellikleri
-* **Şehir Seçimi:** 81 il listelenmiştir (Şu an için *İstanbul* ve *Fethiye* aktif, diğerleri "Yakında" modundadır).
+* **Şehir Seçimi:** 81 il listelenmiştir (Şu an için *İstanbul* ve *Muğla* aktif, diğerleri "Yakında" modundadır).
 * **Kategorili Listeleme:**
     * 🏛️ **Gezilecek Yerler:** Müzeler, tarihi yapılar, plajlar vb.
     * 🍽️ **Restoranlar:** Yeme-içme mekanları, kafeler.
